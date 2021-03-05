@@ -1,0 +1,107 @@
+---
+# tasks file for cuda
+
+# installation based on documentation at https://docs.nvidia.com/datacenter/tesla/tesla-installation-notes/index.html#ubuntu-lts
+- name: "install linux-headers-{{ ansible_kernel }}"
+  apt:
+    name: "linux-headers-{{ ansible_kernel }}"
+    state: present
+    update_cache: true
+  when: ansible_os_family == 'Debian'
+
+- name: get version identifier for cuda
+  shell:
+    cmd: ". /etc/os-release;echo $ID$VERSION_ID | sed -e 's/\\.//g'"
+  register: distribution_cuda_stdout
+  changed_when: false
+
+- name: "set fact distribution_cuda={{ distribution_cuda_stdout.stdout }}"
+  set_fact:
+    distribution_cuda: "{{ distribution_cuda_stdout.stdout }}"
+
+- name: "Ensure packages on the CUDA network repository have priority over the Canonical repository"
+  get_url:
+    url: "https://developer.download.nvidia.com/compute/cuda/repos/{{ distribution_cuda }}/x86_64/cuda-{{ distribution_cuda }}.pin"
+    dest: "/etc/apt/preferences.d/cuda-repository-pin-600"
+
+- name: install gnupg2
+  apt:
+    name: gnupg2
+    state: present
+
+- name: "Install the CUDA repository public GPG key"
+  apt_key:
+    url: "https://developer.download.nvidia.com/compute/cuda/repos/{{ distribution_cuda }}/x86_64/7fa2af80.pub"
+    state: present
+
+- name: "Setup the CUDA network repository"
+  lineinfile:
+    line: "deb http://developer.download.nvidia.com/compute/cuda/repos/{{ distribution_cuda }}/x86_64 /"
+    path: "/etc/apt/sources.list.d/cuda.list"
+    create: true
+
+- name: Update the APT repository cache and install the driver using the cuda-drivers meta-package
+  apt:
+    update_cache: true
+    name: cuda-drivers
+  register: cuda_drivers_installed
+
+- name: reboot the machine
+  reboot:
+  when: cuda_drivers_installed.changed
+
+# post installation tasks
+# ref: https://docs.nvidia.com/cuda/cuda-installation-guide-linux/index.html#post-installation-actions
+
+- name: add cuda path to system-wide $PATH # https://www.jeffgeerling.com/blog/2017/add-path-global-path-ansible
+  copy:
+    dest: /etc/profile.d/cuda-path.sh
+    content: "export PATH=/usr/local/cuda-11.1/bin${PATH:+:${PATH}}"
+    mode: u=rw,g=r,o=r
+
+- name: set LD_LIBRARY_PATH system-wide
+  copy:
+    dest: /etc/profile.d/ld_library_path.sh
+    content: "export LD_LIBRARY_PATH=/usr/local/cuda-11.1/lib64 ${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
+    mode: u=rw,g=r,o=r
+
+- name: install nvidia-cuda-toolkit
+  apt:
+    name: nvidia-cuda-toolkit
+    state: present
+
+# installation of the nvidia container toolkit
+# ref: https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html#docker
+
+- name: "Install the nvidia docker repository public GPG key"
+  apt_key:
+    url: "https://nvidia.github.io/nvidia-docker/gpgkey"
+    state: present
+
+- name: get version identifier for nvidia docker
+  shell:
+    cmd: ". /etc/os-release;echo $ID$VERSION_ID"
+  register: distribution_docker_stdout
+  changed_when: false
+
+- name: "set fact distribution_docker={{ distribution_docker_stdout.stdout }}"
+  set_fact:
+    distribution_docker: "{{ distribution_docker_stdout.stdout }}"
+
+- name: "get list of repos from https://nvidia.github.io/nvidia-docker/{{ distribution_docker }}/nvidia-docker.list"
+  get_url:
+    url: "https://nvidia.github.io/nvidia-docker/{{ distribution_docker }}/nvidia-docker.list"
+    dest: "/etc/apt/sources.list.d/nvidia-docker.list"
+
+- name: "install the nvidia-docker2 package"
+  apt:
+    name: nvidia-docker2
+    state: present
+    update_cache: true
+  register: nvidia_docker2_installation
+
+- name: "restart docker"
+  service:
+    name: docker
+    state: restarted
+  when: nvidia_docker2_installation.changed

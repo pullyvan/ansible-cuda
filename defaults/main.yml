@@ -1,0 +1,5 @@
+---
+# defaults file for cuda
+cuda_repo_url: "https://developer.download.nvidia.com/compute/cuda/repos/rhel7/"
+cuda_rpm_key_path: /etc/rpm/nvidia_packaging_key.asc
+

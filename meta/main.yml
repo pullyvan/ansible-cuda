@@ -1,0 +1,22 @@
+---
+galaxy_info:
+  author: Emmanuel Jaep
+  description: Install Nvidia driver for tesla V100 card & cuda 11
+  company: EPFL
+
+  issue_tracker_url: https://support.epfl.ch
+
+  min_ansible_version: 2.9
+
+  platforms:
+  - name: Ubuntu
+    versions:
+    - bionic
+  galaxy_tags:
+    - nvidia
+    - tesla
+    - linux
+    - cuda
+    - gpu
+
+dependencies: []

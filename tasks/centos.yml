@@ -1,0 +1,152 @@
+---
+# tasks file for ansible-role-cuda
+
+- name: get version identifier for cuda
+  shell:
+    cmd: ". /etc/os-release;echo $ID$VERSION_ID | sed -e 's/\\.//g'"
+  register: distribution_cuda_stdout
+  changed_when: false
+
+- name: "set fact distribution_cuda={{ distribution_cuda_stdout.stdout }}"
+  set_fact:
+    distribution_cuda: "{{ distribution_cuda_stdout.stdout }}"
+
+
+- name: Upgrade all packages
+  yum:
+    name: '*'
+    state: latest
+
+- name: Install Xorg and GCC packages
+  yum:
+    name:
+      - xauth
+      - vim
+      - gcc
+      - yum-utils
+      - kernel-devel
+      - epel-release
+    state: present
+
+- name: Install the EPEL rpm from a remote repo
+  yum:
+    name: https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm
+    state: present
+
+- name: Upload packaging key for Nvidia repositories
+  copy:
+    src: nvidia_packaging_key.asc
+    dest: "{{ cuda_rpm_key_path }}"
+    mode: 0644
+
+- name: Trust packaging key for Nvidia repositories (rpm)
+  rpm_key:
+    key: "{{ cuda_rpm_key_path }}"
+    state: present
+
+- name: Remove trust for old Nvidia packaging key
+  rpm_key:
+    key: 5C37D3BE
+    state: absent
+
+- name: Configure Nvidia repository (yum)
+  yum_repository:
+    name: nvidia
+    description: Official Nvidia repository
+    baseurl: https://developer.download.nvidia.com/compute/cuda/repos/rhel7/x86_64/
+    gpgkey: "file://{{ cuda_rpm_key_path }}"
+    gpgcheck: yes
+    enabled: yes
+
+- name: Install the CUDA rpm from a remote repo
+  yum:
+    name: https://developer.download.nvidia.com/compute/cuda/repos/rhel7/x86_64/cuda-repo-rhel7-10.2.89-1.x86_64.rpm
+    state: present
+
+
+
+- name: yum-clean-metadata
+  command: yum clean metadata
+  args:
+    warn: no
+
+- name: Remove a list of old existing nvidia driver and cuda driver packages
+  yum:
+    name:
+      - nvidia*
+      - cuda*
+    state: removed
+  register: cuda_drivers_uninstalled
+
+- name:
+  reboot:
+  when: cuda_drivers_uninstalled.changed
+
+- name: Install a list of nvidia driver and cuda driver packages
+  yum:
+    name:
+      - nvidia-driver-latest-dkms
+      - cuda
+      - cuda-drivers
+      - dkms
+      - kernel-devel
+    state: present
+  register: cuda_drivers_installed
+
+- name: reboot the machine
+  reboot:
+  when: cuda_drivers_installed.changed
+
+- name: set LD_LIBRARY_PATH system-wide
+  copy:
+    dest: /etc/profile.d/ld_library_path.sh
+    content: "export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/cuda-11.2/lib64"
+    mode: u=rw,g=r,o=r
+
+- name: Install Third party GPUs Libraires
+  yum:
+    name:
+      - freeglut-devel
+      - libX11-devel
+      - libXi-devel
+      - libXmu-devel
+      - make
+      - mesa-libGLU-devel
+    state: present
+
+
+- name: Download Docker from a file path
+  get_url:
+    url: "https://download.docker.com/linux/centos/docker-ce.repo"
+    dest: /etc/yum.repos.d/docker.repo
+
+- name: Download Nvidia-Docker from a file path
+  get_url:
+    url: "https://nvidia.github.io/nvidia-docker/{{ distribution_cuda }}/nvidia-docker.repo"
+    dest: /etc/yum.repos.d/nvidia-docker.repo
+
+- name: Remove trust for old Nvidia packaging key
+  rpm_key:
+    key: f796ecb0
+    state: absent
+
+- name: Upgrade all packages
+  yum:
+    name: '*'
+    state: latest
+
+- name: Install Docker
+  yum:
+    name:
+      - docker-ce
+      - nvidia-docker2
+    state: present
+
+- name: Restart Docker service
+  ansible.builtin.systemd:
+    state: restarted
+    daemon_reload: yes
+    name: docker
+
+
+# vim:ft=ansible:

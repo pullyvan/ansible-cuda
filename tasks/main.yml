@@ -1,0 +1,10 @@
+---
+# tasks file for cuda
+
+# installation based on documentation at https://docs.nvidia.com/datacenter/tesla/tesla-installation-notes/index.html#ubuntu-lts
+- include: debian.yml tags=debian
+  when: ansible_os_family == 'Debian'
+
+- include: centos.yml tags=centos
+  when: ansible_distribution == "CentOS"
+
